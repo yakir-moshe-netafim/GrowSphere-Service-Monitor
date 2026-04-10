@@ -11,9 +11,10 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 // ─── Helper: single endpoint check ───────────────────────────────────────────
-async function checkEndpoint(url: string): Promise<{ isUp: boolean; statusCode: number; duration: number }> {
+async function checkEndpoint(url: string, serviceName: string): Promise<{ isUp: boolean; statusCode: number; duration: number; error?: string }> {
     const start = Date.now();
     try {
+        // 1. Basic Health Check (GET)
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -36,9 +37,42 @@ async function checkEndpoint(url: string): Promise<{ isUp: boolean; statusCode: 
             // Not JSON — rely on HTTP status only
         }
 
+        if (!isUp) {
+            return { isUp: false, statusCode: res.status, duration: Date.now() - start, error: `Health check returned ${res.status}` };
+        }
+
+        // 2. CORS Preflight Check (OPTIONS)
+        // Simulate a browser preflight request
+        try {
+            const corsRes = await fetch(url, {
+                method: 'OPTIONS',
+                cache: 'no-store',
+                headers: {
+                    'Origin': 'https://amor-clinic-app.vercel.app',
+                    'Access-Control-Request-Method': 'GET',
+                    'Access-Control-Request-Headers': 'content-type,authorization'
+                }
+            });
+
+            // Browser expects 200 or 204 for preflight. 
+            // If it returns 405 (Method Not Allowed) or other error, it's a CORS failure.
+            if (!corsRes.ok && corsRes.status !== 204) {
+                console.warn(`⚠️ CORS validation failed for ${serviceName} (${url}): Status ${corsRes.status}`);
+                return { 
+                    isUp: false, 
+                    statusCode: corsRes.status, 
+                    duration: Date.now() - start, 
+                    error: `CORS Preflight Failed (${corsRes.status})` 
+                };
+            }
+        } catch (corsErr) {
+            console.error(`CORS check error for ${serviceName}:`, corsErr);
+            // Don't fail the whole check if fetch fails (could be network), but log it.
+        }
+
         return { isUp, statusCode: res.status, duration: Date.now() - start };
-    } catch {
-        return { isUp: false, statusCode: 0, duration: Date.now() - start };
+    } catch (err) {
+        return { isUp: false, statusCode: 0, duration: Date.now() - start, error: err instanceof Error ? err.message : 'Unknown error' };
     }
 }
 
@@ -104,7 +138,7 @@ export async function GET(request: Request) {
     console.log(`🔍 Pass 1: checking ${checksInput.length} endpoints...`);
 
     const pass1Results: CheckResult[] = await runInChunks(checksInput, 5, async (c) => {
-        const { isUp, statusCode, duration } = await checkEndpoint(c.url);
+        const { isUp, statusCode, duration, error } = await checkEndpoint(c.url, c.serviceName);
         return {
             serviceName: c.serviceName,
             envName: c.envName,
@@ -112,6 +146,7 @@ export async function GET(request: Request) {
             status: isUp ? 'UP' : 'DOWN',
             statusCode,
             duration,
+            error,
             timestamp: new Date().toISOString(),
         } as CheckResult;
     });
@@ -127,17 +162,18 @@ export async function GET(request: Request) {
 
         console.log(`🔍 Pass 2 (retry): re-checking ${firstPassDown.length} failed endpoint(s)...`);
         const pass2Results: CheckResult[] = await runInChunks(firstPassDown, 5, async (c) => {
-            const { isUp, statusCode, duration } = await checkEndpoint(c.url);
+            const { isUp, statusCode, duration, error } = await checkEndpoint(c.url, c.serviceName);
             if (isUp) {
                 console.log(`✅ ${c.serviceName} [${c.envName}] recovered on retry — ignoring (transient blip)`);
             } else {
-                console.log(`❌ ${c.serviceName} [${c.envName}] still DOWN after retry`);
+                console.log(`❌ ${c.serviceName} [${c.envName}] still DOWN after retry: ${error || 'Unknown error'}`);
             }
             return {
                 ...c,
                 status: isUp ? 'UP' : 'DOWN',
                 statusCode,
                 duration,
+                error,
                 timestamp: new Date().toISOString(),
             } as CheckResult;
         });

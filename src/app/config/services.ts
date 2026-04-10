@@ -201,4 +201,15 @@ export const services: ServiceConfig[] = [
             PROD: '4154b42d-c60b-4052-8b98-0462a2f445c7',
         },
     },
+    {
+        id: 'lookup-service',
+        name: 'Lookup Service',
+        environments: [
+            { name: 'Dev1', url: 'https://lookup-dev1.k8s.growsphere.netafim.com/health' },
+            { name: 'Dev2', url: 'https://lookup-dev2.k8s.growsphere.netafim.com/health' },
+            { name: 'QA1', url: 'https://lookup-qa1.k8s.growsphere.netafim.com/health' },
+            { name: 'STAG', url: 'https://lookup-stag.k8s.growsphere.netafim.com/health' },
+            { name: 'PROD', url: 'https://lookup.k8s.growsphere.netafim.com/health' },
+        ],
+    },
 ];
