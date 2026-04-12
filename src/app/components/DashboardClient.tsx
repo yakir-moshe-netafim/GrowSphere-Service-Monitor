@@ -174,9 +174,11 @@ export default function DashboardClient({ services, results, lastCheck }: Props)
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
     const [currentTime, setCurrentTime] = useState<Date | null>(null);
+    const [isMounted, setIsMounted] = useState(false);
 
     // Initial sync
     useEffect(() => {
+        setIsMounted(true);
         setLastUpdatedAt(new Date().toISOString());
         setCurrentTime(new Date());
     }, []);
@@ -247,10 +249,10 @@ export default function DashboardClient({ services, results, lastCheck }: Props)
     const totalDown = results.filter((r) => !r.isUp).length;
     const overallHealthy = totalDown === 0;
 
-    const cronLastCheckFormatted = lastCheck
+    const cronLastCheckFormatted = (isMounted && lastCheck)
         ? new Date(lastCheck).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) +
         ' · ' + new Date(lastCheck).toLocaleDateString('en-GB')
-        : 'Not yet checked by Cron';
+        : lastCheck ? 'Checking...' : 'Not yet checked by Cron';
 
     const lastUpdatedFormatted = lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString('en-GB', {
         hour: '2-digit',
