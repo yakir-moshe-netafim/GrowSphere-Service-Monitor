@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { CheckCircle, XCircle, Activity, RefreshCw, Filter, RotateCcw, AlertTriangle, Database, Zap } from 'lucide-react';
+import { CheckCircle, XCircle, Activity, RefreshCw, Filter, RotateCcw, AlertTriangle, Database, Zap, Loader2 } from 'lucide-react';
 import { ServiceConfig, InsightsResult } from '@/app/types';
 import clsx from 'clsx';
 
@@ -21,8 +20,6 @@ interface ServiceResult {
 
 interface Props {
     services: ServiceConfig[];
-    results: ServiceResult[];
-    lastCheck: string | null;
 }
 
 // ── Insights hook — fetches AI data lazily per service ────────────────────────
@@ -30,7 +27,6 @@ function useInsights(service: ServiceConfig): InsightsResult | null {
     const [data, setData] = useState<InsightsResult | null>(null);
 
     const appIds = service.appInsightsIds;
-    // Pick PROD first, then STAG, then whatever is available
     const appId = appIds?.PROD ?? appIds?.STAG ?? appIds?.QA1 ?? appIds?.Dev1 ?? null;
 
     const fetchInsights = useCallback(async () => {
@@ -45,7 +41,6 @@ function useInsights(service: ServiceConfig): InsightsResult | null {
 
     useEffect(() => {
         fetchInsights();
-        // Refresh insights every 5 minutes
         const id = setInterval(fetchInsights, 5 * 60 * 1000);
         return () => clearInterval(id);
     }, [fetchInsights]);
@@ -57,10 +52,8 @@ function useInsights(service: ServiceConfig): InsightsResult | null {
 function InsightsPanel({ service }: { service: ServiceConfig }) {
     const insights = useInsights(service);
 
-    // No App ID configured for this service
     if (!service.appInsightsIds || Object.keys(service.appInsightsIds).length === 0) return null;
 
-    // Still loading
     if (!insights) {
         return (
             <div className="mt-3 pt-3 border-t border-slate-800/60">
@@ -72,7 +65,6 @@ function InsightsPanel({ service }: { service: ServiceConfig }) {
         );
     }
 
-    // Credentials not configured
     if (!insights.available) {
         return (
             <div className="mt-3 pt-3 border-t border-slate-800/60">
@@ -94,38 +86,19 @@ function InsightsPanel({ service }: { service: ServiceConfig }) {
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">App Insights · PROD · 24h</span>
             </div>
             <div className="grid grid-cols-3 gap-2">
-                {/* Error rate */}
-                <div className={clsx(
-                    'rounded-lg px-2.5 py-2 text-center',
-                    errorRate === 0 ? 'bg-green-500/10' : errorRate < 5 ? 'bg-yellow-500/10' : 'bg-red-500/15'
-                )}>
-                    <div className={clsx(
-                        'text-lg font-bold tabular-nums',
-                        errorRate === 0 ? 'text-green-400' : errorRate < 5 ? 'text-yellow-400' : 'text-red-400'
-                    )}>{errorRate}%</div>
+                <div className={clsx('rounded-lg px-2.5 py-2 text-center', errorRate === 0 ? 'bg-green-500/10' : errorRate < 5 ? 'bg-yellow-500/10' : 'bg-red-500/15')}>
+                    <div className={clsx('text-lg font-bold tabular-nums', errorRate === 0 ? 'text-green-400' : errorRate < 5 ? 'text-yellow-400' : 'text-red-400')}>{errorRate}%</div>
                     <div className="text-xs text-slate-500">error rate</div>
                 </div>
-
-                {/* Failed requests */}
-                <div className={clsx(
-                    'rounded-lg px-2.5 py-2 text-center',
-                    failedRequests24h === 0 ? 'bg-green-500/10' : 'bg-red-500/15'
-                )}>
-                    <div className={clsx(
-                        'text-lg font-bold tabular-nums',
-                        failedRequests24h === 0 ? 'text-green-400' : 'text-red-400'
-                    )}>{failedRequests24h.toLocaleString()}</div>
+                <div className={clsx('rounded-lg px-2.5 py-2 text-center', failedRequests24h === 0 ? 'bg-green-500/10' : 'bg-red-500/15')}>
+                    <div className={clsx('text-lg font-bold tabular-nums', failedRequests24h === 0 ? 'text-green-400' : 'text-red-400')}>{failedRequests24h.toLocaleString()}</div>
                     <div className="text-xs text-slate-500">failed req</div>
                 </div>
-
-                {/* Total requests */}
                 <div className="bg-slate-800/40 rounded-lg px-2.5 py-2 text-center">
                     <div className="text-lg font-bold tabular-nums text-slate-300">{totalRequests24h.toLocaleString()}</div>
                     <div className="text-xs text-slate-500">total req</div>
                 </div>
             </div>
-
-            {/* Exception / Dependency row */}
             {(topException || topDependencyFailure) && (
                 <div className="mt-2 space-y-1">
                     {topException && (
@@ -142,7 +115,6 @@ function InsightsPanel({ service }: { service: ServiceConfig }) {
                     )}
                 </div>
             )}
-
             {!hasIssues && (
                 <div className="flex items-center gap-1.5 mt-2 text-xs text-green-500/70">
                     <CheckCircle className="w-3 h-3" />
@@ -162,34 +134,41 @@ const ENV_STYLES: Record<string, { badge: string }> = {
 };
 
 const ALL_ENVS: EnvName[] = ['Dev1', 'Dev2', 'QA1', 'STAG', 'PROD'];
-
-// Auto-refresh the page data every 60 seconds
 const REFRESH_INTERVAL_SECONDS = 60;
 
-export default function DashboardClient({ services, results, lastCheck }: Props) {
-    const router = useRouter();
-    const [selectedEnv, setSelectedEnv] = useState<EnvName | 'ALL'>('ALL');
-    const [showOnlyDown, setShowOnlyDown] = useState(false);
-    const [countdown, setCountdown] = useState(REFRESH_INTERVAL_SECONDS);
+export default function DashboardClient({ services }: Props) {
+    const [results, setResults] = useState<ServiceResult[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
     const [currentTime, setCurrentTime] = useState<Date | null>(null);
-    const [isMounted, setIsMounted] = useState(false);
+    const [countdown, setCountdown] = useState(REFRESH_INTERVAL_SECONDS);
+    const [selectedEnv, setSelectedEnv] = useState<EnvName | 'ALL'>('ALL');
+    const [showOnlyDown, setShowOnlyDown] = useState(false);
 
-    // Initial sync
-    useEffect(() => {
-        setIsMounted(true);
-        setLastUpdatedAt(new Date().toISOString());
-        setCurrentTime(new Date());
+    // Fetch health check results from the API
+    const fetchStatus = useCallback(async () => {
+        try {
+            const res = await fetch('/api/status', { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            setResults(data.results ?? []);
+            setLastUpdatedAt(new Date().toISOString());
+        } catch (err) {
+            console.error('Failed to fetch status:', err);
+        } finally {
+            setIsLoading(false);
+            setIsRefreshing(false);
+        }
     }, []);
 
-    // Sync lastUpdatedAt when results change
+    // Initial load
     useEffect(() => {
-        setLastUpdatedAt(new Date().toISOString());
-        setIsRefreshing(false);
-    }, [results]);
+        setCurrentTime(new Date());
+        fetchStatus();
+    }, [fetchStatus]);
 
-    // Live clock and countdown tick
+    // Live clock + countdown ticker
     useEffect(() => {
         const timer = setInterval(() => {
             setCurrentTime(new Date());
@@ -201,22 +180,21 @@ export default function DashboardClient({ services, results, lastCheck }: Props)
         return () => clearInterval(timer);
     }, []);
 
+    // Auto-refresh when countdown wraps
+    useEffect(() => {
+        if (countdown === REFRESH_INTERVAL_SECONDS && !isLoading) {
+            setIsRefreshing(true);
+            fetchStatus();
+        }
+    }, [countdown, isLoading, fetchStatus]);
+
     const doRefresh = () => {
         setIsRefreshing(true);
-        // Using window.location.reload() instead of router.refresh() to satisfy the user's
-        // expectation of a "clean slate" and to bypass any possible client-side caching.
-        window.location.reload();
+        setCountdown(REFRESH_INTERVAL_SECONDS);
+        fetchStatus();
     };
 
-    // Trigger refresh when countdown hits 0 (wraps back to REFRESH_INTERVAL_SECONDS)
-    useEffect(() => {
-        if (countdown === REFRESH_INTERVAL_SECONDS) {
-            router.refresh();
-            setIsRefreshing(true);
-        }
-    }, [countdown, router]);
-
-    // Derive filtered data and sort (DOWN services first)
+    // Filtered & sorted services
     const filteredServices = useMemo(() => {
         const processed = services
             .map((service) => {
@@ -232,39 +210,27 @@ export default function DashboardClient({ services, results, lastCheck }: Props)
             })
             .filter((service) => service.environments.length > 0);
 
-        // Sort: Services with any DOWN environment in current view come first
         return [...processed].sort((a, b) => {
-            const aResults = results.filter(r => r.serviceId === a.id && a.environments.some(e => e.name === r.env));
-            const bResults = results.filter(r => r.serviceId === b.id && b.environments.some(e => e.name === r.env));
-
-            const aUp = aResults.every(r => r.isUp);
-            const bUp = bResults.every(r => r.isUp);
-
-            if (aUp === bUp) return 0; // Keep order if both same
-            return aUp ? 1 : -1; // If a is UP and b is DOWN, b comes first
+            const aResults = results.filter((r) => r.serviceId === a.id && a.environments.some((e) => e.name === r.env));
+            const bResults = results.filter((r) => r.serviceId === b.id && b.environments.some((e) => e.name === r.env));
+            const aUp = aResults.every((r) => r.isUp);
+            const bUp = bResults.every((r) => r.isUp);
+            if (aUp === bUp) return 0;
+            return aUp ? 1 : -1;
         });
     }, [services, results, selectedEnv, showOnlyDown]);
 
     const totalUp = results.filter((r) => r.isUp).length;
     const totalDown = results.filter((r) => !r.isUp).length;
-    const overallHealthy = totalDown === 0;
+    const overallHealthy = totalDown === 0 && !isLoading;
 
-    const cronLastCheckFormatted = (isMounted && lastCheck)
-        ? new Date(lastCheck).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) +
-        ' · ' + new Date(lastCheck).toLocaleDateString('en-GB')
-        : lastCheck ? 'Checking...' : 'Not yet checked by Cron';
+    const lastUpdatedFormatted = lastUpdatedAt
+        ? new Date(lastUpdatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : '--:--:--';
 
-    const lastUpdatedFormatted = lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    }) : '--:--:--';
-
-    const currentTimeFormatted = currentTime ? currentTime.toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-    }) : '--:--:--';
+    const currentTimeFormatted = currentTime
+        ? currentTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        : '--:--:--';
 
     return (
         <main className="min-h-screen bg-slate-950 text-white">
@@ -280,31 +246,37 @@ export default function DashboardClient({ services, results, lastCheck }: Props)
                     </div>
                     <div className="flex items-center gap-4 flex-wrap">
                         {/* Overall status badge */}
-                        <div
-                            className={clsx(
-                                'flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-semibold',
-                                overallHealthy
-                                    ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                                    : 'bg-red-500/10 border-red-500/30 text-red-400'
+                        <div className={clsx(
+                            'flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm font-semibold',
+                            isLoading
+                                ? 'bg-slate-800 border-slate-700 text-slate-400'
+                                : overallHealthy
+                                ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                                : 'bg-red-500/10 border-red-500/30 text-red-400'
+                        )}>
+                            {isLoading ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                                <span className={clsx('w-2 h-2 rounded-full animate-pulse', overallHealthy ? 'bg-green-400' : 'bg-red-400')} />
                             )}
-                        >
-                            <span className={clsx('w-2 h-2 rounded-full animate-pulse', overallHealthy ? 'bg-green-400' : 'bg-red-400')} />
-                            {overallHealthy ? 'All Systems Operational' : `${totalDown} Service${totalDown > 1 ? 's' : ''} Down`}
+                            {isLoading
+                                ? 'Checking services…'
+                                : overallHealthy
+                                ? 'All Systems Operational'
+                                : `${totalDown} Service${totalDown > 1 ? 's' : ''} Down`}
                         </div>
 
-                        {/* Live refresh counter + manual refresh button */}
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={doRefresh}
-                                title="Refresh now"
-                                className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-blue-400 transition-colors"
-                            >
-                                <RefreshCw className={clsx('w-3.5 h-3.5', isRefreshing && 'animate-spin text-blue-400')} />
-                                <span className="tabular-nums">
-                                    {isRefreshing ? 'Refreshing…' : `Auto-refresh in ${countdown}s`}
-                                </span>
-                            </button>
-                        </div>
+                        {/* Refresh counter */}
+                        <button
+                            onClick={doRefresh}
+                            title="Refresh now"
+                            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-blue-400 transition-colors"
+                        >
+                            <RefreshCw className={clsx('w-3.5 h-3.5', (isRefreshing || isLoading) && 'animate-spin text-blue-400')} />
+                            <span className="tabular-nums">
+                                {isRefreshing || isLoading ? 'Refreshing…' : `Auto-refresh in ${countdown}s`}
+                            </span>
+                        </button>
                     </div>
                 </div>
 
@@ -319,10 +291,6 @@ export default function DashboardClient({ services, results, lastCheck }: Props)
                             <Activity className="w-3 h-3 text-blue-500" />
                             <span>Live time: <span className="text-blue-400 font-mono">{currentTimeFormatted}</span></span>
                         </span>
-                        <span className="flex items-center gap-1.5 border-l border-slate-800 pl-6">
-                            <RefreshCw className="w-3 h-3" />
-                            <span>Last Cron run: <span className="text-slate-400">{cronLastCheckFormatted}</span></span>
-                        </span>
                     </div>
                 </div>
             </header>
@@ -331,184 +299,194 @@ export default function DashboardClient({ services, results, lastCheck }: Props)
                 {/* Summary Stats */}
                 <div className="grid grid-cols-3 gap-4 mb-8">
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 text-center">
-                        <div className="text-3xl font-bold text-white">{results.length}</div>
+                        <div className="text-3xl font-bold text-white">{isLoading ? '—' : results.length}</div>
                         <div className="text-sm text-slate-400 mt-1">Total Endpoints</div>
                     </div>
                     <div className="bg-slate-900 border border-green-500/20 rounded-xl p-5 text-center">
-                        <div className="text-3xl font-bold text-green-400">{totalUp}</div>
+                        <div className="text-3xl font-bold text-green-400">{isLoading ? '—' : totalUp}</div>
                         <div className="text-sm text-slate-400 mt-1">Healthy</div>
                     </div>
                     <div className="bg-slate-900 border border-red-500/20 rounded-xl p-5 text-center">
-                        <div className="text-3xl font-bold text-red-400">{totalDown}</div>
+                        <div className="text-3xl font-bold text-red-400">{isLoading ? '—' : totalDown}</div>
                         <div className="text-sm text-slate-400 mt-1">Down</div>
                     </div>
                 </div>
 
-                {/* Filter Controls */}
-                <div className="flex items-center gap-3 mb-6 flex-wrap">
-                    <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-1">
-                        <button
-                            onClick={() => setSelectedEnv('ALL')}
-                            className={clsx(
-                                'px-3 py-1.5 rounded text-xs font-bold transition-all',
-                                selectedEnv === 'ALL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                            )}
-                        >
-                            All Envs
-                        </button>
-                        {ALL_ENVS.map((env) => (
-                            <button
-                                key={env}
-                                onClick={() => setSelectedEnv(env)}
-                                className={clsx(
-                                    'px-3 py-1.5 rounded text-xs font-bold transition-all border',
-                                    selectedEnv === env
-                                        ? ENV_STYLES[env]?.badge + ' shadow'
-                                        : 'text-slate-400 border-transparent hover:text-white'
-                                )}
-                            >
-                                {env}
-                            </button>
+                {/* Loading skeleton */}
+                {isLoading && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                        {Array.from({ length: 9 }).map((_, i) => (
+                            <div key={i} className="bg-slate-900 rounded-xl border border-slate-800 p-5 animate-pulse">
+                                <div className="flex items-center gap-2.5 mb-4">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
+                                    <div className="h-4 w-32 bg-slate-800 rounded" />
+                                </div>
+                                <div className="space-y-2">
+                                    {Array.from({ length: 3 }).map((_, j) => (
+                                        <div key={j} className="h-10 bg-slate-800/60 rounded-lg" />
+                                    ))}
+                                </div>
+                            </div>
                         ))}
                     </div>
+                )}
 
-                    <button
-                        onClick={() => setShowOnlyDown((v) => !v)}
-                        className={clsx(
-                            'flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-bold transition-all',
-                            showOnlyDown
-                                ? 'bg-red-500/20 border-red-500/40 text-red-400'
-                                : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
-                        )}
-                    >
-                        <Filter className="w-3.5 h-3.5" />
-                        {showOnlyDown ? 'Showing: DOWN only' : 'Show only DOWN'}
-                    </button>
-
-                    {(selectedEnv !== 'ALL' || showOnlyDown) && (
-                        <button
-                            onClick={() => { setSelectedEnv('ALL'); setShowOnlyDown(false); }}
-                            className="text-xs text-slate-500 hover:text-slate-300 underline transition-colors"
-                        >
-                            Clear filters
-                        </button>
-                    )}
-                </div>
-
-                {/* Services Grid */}
-                {filteredServices.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-24 text-slate-600">
-                        <CheckCircle className="w-16 h-16 mb-4 text-green-700/40" />
-                        <p className="text-lg font-medium">No services match current filters</p>
-                        <p className="text-sm mt-1">
-                            {showOnlyDown ? 'All monitored services are healthy! 🎉' : 'Try changing your filter.'}
-                        </p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {filteredServices.map((service) => {
-                            const serviceResults = results.filter((r) => r.serviceId === service.id);
-                            const visibleResults = serviceResults.filter((r) =>
-                                service.environments.some((e) => e.name === r.env)
-                            );
-                            const serviceUp = visibleResults.every((r) => r.isUp);
-
-                            return (
-                                <div
-                                    key={service.id}
+                {/* Filter Controls — only show after load */}
+                {!isLoading && (
+                    <>
+                        <div className="flex items-center gap-3 mb-6 flex-wrap">
+                            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-1">
+                                <button
+                                    onClick={() => setSelectedEnv('ALL')}
                                     className={clsx(
-                                        'bg-slate-900 rounded-xl border p-5 transition-all duration-200 hover:shadow-lg hover:shadow-slate-900/50',
-                                        serviceUp ? 'border-slate-800' : 'border-red-500/30'
+                                        'px-3 py-1.5 rounded text-xs font-bold transition-all',
+                                        selectedEnv === 'ALL' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'
                                     )}
                                 >
-                                    <div className="flex items-start justify-between mb-4">
-                                        <div className="flex items-center gap-2.5">
-                                            <span
-                                                className={clsx(
-                                                    'w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse',
-                                                    serviceUp ? 'bg-green-400' : 'bg-red-400'
-                                                )}
-                                            />
-                                            <h2 className="font-semibold text-slate-100 leading-tight">{service.name}</h2>
-                                        </div>
-                                        <span
+                                    All Envs
+                                </button>
+                                {ALL_ENVS.map((env) => (
+                                    <button
+                                        key={env}
+                                        onClick={() => setSelectedEnv(env)}
+                                        className={clsx(
+                                            'px-3 py-1.5 rounded text-xs font-bold transition-all border',
+                                            selectedEnv === env
+                                                ? ENV_STYLES[env]?.badge + ' shadow'
+                                                : 'text-slate-400 border-transparent hover:text-white'
+                                        )}
+                                    >
+                                        {env}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={() => setShowOnlyDown((v) => !v)}
+                                className={clsx(
+                                    'flex items-center gap-2 px-4 py-2 rounded-lg border text-xs font-bold transition-all',
+                                    showOnlyDown
+                                        ? 'bg-red-500/20 border-red-500/40 text-red-400'
+                                        : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'
+                                )}
+                            >
+                                <Filter className="w-3.5 h-3.5" />
+                                {showOnlyDown ? 'Showing: DOWN only' : 'Show only DOWN'}
+                            </button>
+
+                            {(selectedEnv !== 'ALL' || showOnlyDown) && (
+                                <button
+                                    onClick={() => { setSelectedEnv('ALL'); setShowOnlyDown(false); }}
+                                    className="text-xs text-slate-500 hover:text-slate-300 underline transition-colors"
+                                >
+                                    Clear filters
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Services Grid */}
+                        {filteredServices.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-24 text-slate-600">
+                                <CheckCircle className="w-16 h-16 mb-4 text-green-700/40" />
+                                <p className="text-lg font-medium">No services match current filters</p>
+                                <p className="text-sm mt-1">
+                                    {showOnlyDown ? 'All monitored services are healthy! 🎉' : 'Try changing your filter.'}
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                {filteredServices.map((service) => {
+                                    const serviceResults = results.filter((r) => r.serviceId === service.id);
+                                    const visibleResults = serviceResults.filter((r) =>
+                                        service.environments.some((e) => e.name === r.env)
+                                    );
+                                    const serviceUp = visibleResults.every((r) => r.isUp);
+
+                                    return (
+                                        <div
+                                            key={service.id}
                                             className={clsx(
-                                                'text-xs px-2 py-0.5 rounded font-medium flex-shrink-0',
-                                                serviceUp ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                                                'bg-slate-900 rounded-xl border p-5 transition-all duration-200 hover:shadow-lg hover:shadow-slate-900/50',
+                                                serviceUp ? 'border-slate-800' : 'border-red-500/30'
                                             )}
                                         >
-                                            {serviceUp ? 'OK' : 'ISSUE'}
-                                        </span>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        {service.environments.map((env) => {
-                                            const result = results.find((r) => r.serviceId === service.id && r.env === env.name);
-                                            const isUp = result?.isUp ?? false;
-                                            const envStyle = ENV_STYLES[env.name] ?? ENV_STYLES.Dev1;
-
-                                            return (
-                                                <div key={env.name} className="flex flex-col gap-1">
-                                                    <div className="flex items-center justify-between bg-slate-800/40 rounded-lg px-3 py-2.5">
-                                                        {/* Left: env badge + truncated URL link */}
-                                                        <div className="flex items-center gap-2 min-w-0">
-                                                            <span className={clsx('text-xs font-bold px-2 py-0.5 rounded border flex-shrink-0', envStyle.badge)}>
-                                                                {env.name}
-                                                            </span>
-                                                            <a
-                                                                href={env.url}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="text-xs text-slate-600 hover:text-blue-400 transition-colors truncate max-w-[140px]"
-                                                                title={env.url}
-                                                            >
-                                                                {env.url.replace('https://', '')}
-                                                            </a>
-                                                        </div>
-
-                                                        {/* Right: duration + status */}
-                                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                                            {result?.duration !== undefined && (
-                                                                <span className="text-xs text-slate-600">{result.duration}ms</span>
-                                                            )}
-                                                            {isUp ? (
-                                                                <span className="flex items-center gap-1 text-green-400 text-xs font-bold">
-                                                                    <CheckCircle className="w-3.5 h-3.5" /> UP
-                                                                </span>
-                                                            ) : (
-                                                                <span 
-                                                                    className="flex items-center gap-1 text-red-400 text-xs font-bold cursor-help"
-                                                                    title={result?.error || (result?.statusCode === 0 ? 'Connection Timeout' : `Error ${result?.statusCode}`)}
-                                                                >
-                                                                    <XCircle className="w-3.5 h-3.5" />
-                                                                    {result?.statusCode === 0 ? (result?.error || 'TIMEOUT') : `${result?.statusCode ?? 'ERR'}`}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Full URL shown below when DOWN */}
-                                                    {!isUp && (
-                                                        <a
-                                                            href={env.url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-xs text-red-400/70 hover:text-red-300 break-all pl-3 transition-colors"
-                                                        >
-                                                            🔗 {env.url}
-                                                        </a>
-                                                    )}
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className={clsx('w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse', serviceUp ? 'bg-green-400' : 'bg-red-400')} />
+                                                    <h2 className="font-semibold text-slate-100 leading-tight">{service.name}</h2>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
+                                                <span className={clsx(
+                                                    'text-xs px-2 py-0.5 rounded font-medium flex-shrink-0',
+                                                    serviceUp ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                                                )}>
+                                                    {serviceUp ? 'OK' : 'ISSUE'}
+                                                </span>
+                                            </div>
 
-                                    {/* Application Insights panel */}
-                                    <InsightsPanel service={service} />
-                                </div>
-                            );
-                        })}
-                    </div>
+                                            <div className="space-y-2">
+                                                {service.environments.map((env) => {
+                                                    const result = results.find((r) => r.serviceId === service.id && r.env === env.name);
+                                                    const isUp = result?.isUp ?? false;
+                                                    const envStyle = ENV_STYLES[env.name] ?? ENV_STYLES.Dev1;
+
+                                                    return (
+                                                        <div key={env.name} className="flex flex-col gap-1">
+                                                            <div className="flex items-center justify-between bg-slate-800/40 rounded-lg px-3 py-2.5">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <span className={clsx('text-xs font-bold px-2 py-0.5 rounded border flex-shrink-0', envStyle.badge)}>
+                                                                        {env.name}
+                                                                    </span>
+                                                                    <a
+                                                                        href={env.url}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-xs text-slate-600 hover:text-blue-400 transition-colors truncate max-w-[140px]"
+                                                                        title={env.url}
+                                                                    >
+                                                                        {env.url.replace('https://', '')}
+                                                                    </a>
+                                                                </div>
+                                                                <div className="flex items-center gap-2 flex-shrink-0">
+                                                                    {result?.duration !== undefined && (
+                                                                        <span className="text-xs text-slate-600">{result.duration}ms</span>
+                                                                    )}
+                                                                    {isUp ? (
+                                                                        <span className="flex items-center gap-1 text-green-400 text-xs font-bold">
+                                                                            <CheckCircle className="w-3.5 h-3.5" /> UP
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span
+                                                                            className="flex items-center gap-1 text-red-400 text-xs font-bold cursor-help"
+                                                                            title={result?.error || (result?.statusCode === 0 ? 'Connection Timeout' : `Error ${result?.statusCode}`)}
+                                                                        >
+                                                                            <XCircle className="w-3.5 h-3.5" />
+                                                                            {result?.statusCode === 0 ? (result?.error || 'TIMEOUT') : `${result?.statusCode ?? 'ERR'}`}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            {!isUp && result && (
+                                                                <a
+                                                                    href={env.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-xs text-red-400/70 hover:text-red-300 break-all pl-3 transition-colors"
+                                                                >
+                                                                    🔗 {env.url}
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <InsightsPanel service={service} />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </>
                 )}
 
                 <footer className="mt-12 text-center text-xs text-slate-600 border-t border-slate-800 pt-6">
