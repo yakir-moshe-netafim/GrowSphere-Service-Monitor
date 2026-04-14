@@ -148,21 +148,54 @@ export default function DashboardClient({ services }: Props) {
     const [selectedEnv, setSelectedEnv] = useState<EnvName | 'ALL'>('ALL');
     const [showOnlyDown, setShowOnlyDown] = useState(false);
 
-    // Fetch health check results from the API
+    // Fetch health check results individually to avoid Vercel 504 timeouts
     const fetchStatus = useCallback(async () => {
-        try {
-            const res = await fetch('/api/status', { cache: 'no-store' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
-            setResults(data.results ?? []);
-            setLastUpdatedAt(new Date().toISOString());
-        } catch (err) {
-            console.error('Failed to fetch status:', err);
-        } finally {
-            setIsLoading(false);
-            setIsRefreshing(false);
+        setIsRefreshing(true);
+        
+        // Prepare all tasks
+        const tasks: { serviceId: string; env: string; url: string }[] = [];
+        services.forEach(s => {
+            s.environments.forEach(e => {
+                tasks.push({ serviceId: s.id, env: e.name, url: e.url });
+            });
+        });
+
+        // Function to check a single endpoint
+        const checkOne = async (task: typeof tasks[0]) => {
+            try {
+                const res = await fetch(`/api/check?url=${encodeURIComponent(task.url)}`, { cache: 'no-store' });
+                const data = await res.json();
+                
+                setResults(prev => {
+                    // Update or add the result
+                    const otherResults = prev.filter(r => !(r.serviceId === task.serviceId && r.env === task.env));
+                    return [...otherResults, {
+                        serviceId: task.serviceId,
+                        serviceName: services.find(s => s.id === task.serviceId)?.name || '',
+                        env: task.env,
+                        url: task.url,
+                        isUp: data.isUp,
+                        statusCode: data.statusCode,
+                        duration: data.duration,
+                        error: data.error
+                    }];
+                });
+            } catch (err) {
+                console.error(`Failed to check ${task.url}:`, err);
+            }
+        };
+
+        // Run checks in parallel with a concurrency limit
+        const concurrencyLimit = 15;
+        for (let i = 0; i < tasks.length; i += concurrencyLimit) {
+            const chunk = tasks.slice(i, i + concurrencyLimit);
+            await Promise.all(chunk.map(checkOne));
         }
-    }, []);
+
+        setLastUpdatedAt(new Date().toISOString());
+        setIsLoading(false);
+        setIsRefreshing(false);
+    }, [services]);
 
     // Initial load
     useEffect(() => {
