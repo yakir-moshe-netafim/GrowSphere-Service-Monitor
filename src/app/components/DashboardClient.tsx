@@ -5,7 +5,7 @@ import { CheckCircle, XCircle, Activity, RefreshCw, Filter, RotateCcw, AlertTria
 import { ServiceConfig, InsightsResult } from '@/app/types';
 import clsx from 'clsx';
 
-type EnvName = 'Dev1' | 'Dev2' | 'QA1' | 'STAG' | 'PROD';
+type EnvName = 'Dev1' | 'Dev2' | 'QA1' | 'STAG' | 'PROD' | 'China Prod' | 'China Stag';
 
 interface ServiceResult {
     serviceId: string;
@@ -131,9 +131,11 @@ const ENV_STYLES: Record<string, { badge: string }> = {
     QA1: { badge: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' },
     STAG: { badge: 'bg-orange-500/20 text-orange-300 border-orange-500/30' },
     PROD: { badge: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
+    'China Prod': { badge: 'bg-red-500/20 text-red-300 border-red-500/30' },
+    'China Stag': { badge: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
 };
 
-const ALL_ENVS: EnvName[] = ['Dev1', 'Dev2', 'QA1', 'STAG', 'PROD'];
+const ALL_ENVS: EnvName[] = ['Dev1', 'Dev2', 'QA1', 'STAG', 'PROD', 'China Prod', 'China Stag'];
 const REFRESH_INTERVAL_SECONDS = 60;
 
 export default function DashboardClient({ services }: Props) {
