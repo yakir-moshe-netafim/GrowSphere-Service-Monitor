@@ -73,8 +73,8 @@ export const services: ServiceConfig[] = [
             { name: 'QA1', url: 'https://timeseriesapi-qa1.k8s.growsphere.netafim.com/health' },
             { name: 'STAG', url: 'https://timeseriesapi-stag.k8s.growsphere.netafim.com/health' },
             { name: 'PROD', url: 'https://timeseriesapi.k8s.growsphere.netafim.com/health' },
-            { name: 'China Prod', url: 'https://app-timeseriesapi-prod-china.chinacloudsites.cn/health' },
-            { name: 'China Stag', url: 'https://app-timeseriesapi-stag-china.chinacloudsites.cn/health' },
+            { name: 'China Prod', url: 'https://timeseriesapi.k8s.growsphere.netafim.cn/health' },
+            { name: 'China Stag', url: 'https://timeseriesapi-stag.k8s.growsphere.netafim.cn/health' },
         ],
     },
     {
@@ -136,8 +136,8 @@ export const services: ServiceConfig[] = [
             { name: 'QA1', url: 'https://apigateway-qa1.k8s.growsphere.netafim.com/health' },
             { name: 'STAG', url: 'https://apigateway-stag.k8s.growsphere.netafim.com/health' },
             { name: 'PROD', url: 'https://apigateway.k8s.growsphere.netafim.com/health' },
-            { name: 'China Prod', url: 'https://app-apigateway-prod-china.chinacloudsites.cn/health' },
-            { name: 'China Stag', url: 'https://app-apigateway-stag-china.chinacloudsites.cn/health' },
+            { name: 'China Prod', url: 'https://apigateway.k8s.growsphere.netafim.cn/health' },
+            { name: 'China Stag', url: 'https://apigateway-stag.k8s.growsphere.netafim.cn/health' },
         ],
     },
     {
