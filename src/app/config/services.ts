@@ -176,7 +176,7 @@ export const services: ServiceConfig[] = [
             { name: 'STAG', url: 'https://reportapi-stag.k8s.growsphere.netafim.com/health' },
             { name: 'PROD', url: 'https://prod-netbeatvx-reportapi-app-weu.azurewebsites.net/health' },
             { name: 'China Prod', url: 'https://app-reportapi-prod-china.chinacloudsites.cn/health' },
-            { name: 'China Stag', url: 'https://rsenseadapter-stag.k8s.growsphere.netafim.cn/swagger/index.html' },
+            { name: 'China Stag', url: 'https://app-reportapi-stag-china.chinacloudsites.cn/health' },
         ],
     },
     {
@@ -259,7 +259,7 @@ export const services: ServiceConfig[] = [
         id: 'rsense-adapter',
         name: 'RSense Adapter',
         environments: [
-            { name: 'China Stag', url: 'https://rsenseadapter-stag.k8s.growsphere.netafim.cn/' },
+            { name: 'China Stag', url: 'https://rsenseadapter-stag.k8s.growsphere.netafim.cn/health' },
         ],
     },
 ];
