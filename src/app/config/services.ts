@@ -55,13 +55,13 @@ export const services: ServiceConfig[] = [
         id: 'graph-api',
         name: 'Graph API',
         environments: [
-            { name: 'Dev1', url: 'https://dev1-netbeatvx-graphapi-app-weu.azurewebsites.net/health' },
-            { name: 'Dev2', url: 'https://dev2-netbeatvx-graphapi-app-weu.azurewebsites.net/health' },
-            { name: 'QA1', url: 'https://qa1-netbeatvx-graphapi-app-weu.azurewebsites.net/health' },
-            { name: 'STAG', url: 'https://stag-netbeatvx-graphapi-app-weu.azurewebsites.net/health' },
+            { name: 'Dev1', url: 'https://graphapi-dev1.k8s.growsphere.netafim.com/health' },
+            { name: 'Dev2', url: 'https://graphapi-dev2.k8s.growsphere.netafim.com/health' },
+            { name: 'QA1', url: 'https://graphapi-qa1.k8s.growsphere.netafim.com/health' },
+            { name: 'STAG', url: 'https://graphapi-stag.k8s.growsphere.netafim.com/health' },
             { name: 'PROD', url: 'https://prod-netbeatvx-graphapi-app-weu.azurewebsites.net/health' },
-            { name: 'China Prod', url: 'https://app-graphapi-prod-china.chinacloudsites.cn/health' },
-            { name: 'China Stag', url: 'https://app-graphapi-stag-china.chinacloudsites.cn/health' },
+            { name: 'China Prod', url: 'https://graphapi.k8s.growsphere.netafim.cn/health' },
+            { name: 'China Stag', url: 'https://graphapi-stag.k8s.growsphere.netafim.cn/health' },
         ],
     },
     {
@@ -176,7 +176,7 @@ export const services: ServiceConfig[] = [
             { name: 'STAG', url: 'https://reportapi-stag.k8s.growsphere.netafim.com/health' },
             { name: 'PROD', url: 'https://prod-netbeatvx-reportapi-app-weu.azurewebsites.net/health' },
             { name: 'China Prod', url: 'https://app-reportapi-prod-china.chinacloudsites.cn/health' },
-            { name: 'China Stag', url: 'https://app-reportapi-stag-china.chinacloudsites.cn/health' },
+            { name: 'China Stag', url: 'https://reportapi-stag.k8s.growsphere.netafim.cn/health' },
         ],
     },
     {
@@ -245,7 +245,7 @@ export const services: ServiceConfig[] = [
             { name: 'STAG', url: 'https://lookup-stag.k8s.growsphere.netafim.com/health' },
             { name: 'PROD', url: 'https://lookup.k8s.growsphere.netafim.com/health' },
             { name: 'China Prod', url: 'https://app-lookup-prod-china.chinacloudsites.cn/health' },
-            { name: 'China Stag', url: 'https://app-lookup-stag-china.chinacloudsites.cn/health' },
+            { name: 'China Stag', url: 'https://lookup-stag.k8s.growsphere.netafim.cn/health' },
         ],
     },
     {
@@ -253,13 +253,6 @@ export const services: ServiceConfig[] = [
         name: 'Identity Service',
         environments: [
             { name: 'China Prod', url: 'https://app-ids.k8s.growsphere.netafim.cn/.well-known/openid-configuration' },
-        ],
-    },
-    {
-        id: 'rsense-adapter',
-        name: 'RSense Adapter',
-        environments: [
-            { name: 'China Stag', url: 'https://rsenseadapter-stag.k8s.growsphere.netafim.cn/health' },
         ],
     },
 ];
