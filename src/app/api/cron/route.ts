@@ -41,33 +41,27 @@ async function checkEndpoint(url: string, serviceName: string): Promise<{ isUp: 
             return { isUp: false, statusCode: res.status, duration: Date.now() - start, error: `Health check returned ${res.status}` };
         }
 
-        // 2. CORS Preflight Check (OPTIONS)
-        // Simulate a browser preflight request
+        // 2. CORS Preflight Check (OPTIONS) — diagnostic only.
+        // A rejected preflight does NOT mean the service is down: Azure App Service,
+        // SignalR and several K8s ingresses answer OPTIONS with 400 while /health is
+        // a healthy 200. Treating that as DOWN produced false alerts (Graph API PROD,
+        // Report API PROD/China Prod, Lookup China Prod, SignalR, Identity China Prod)
+        // and made the cron disagree with the dashboard, which only checks GET /health.
         try {
             const corsRes = await fetch(url, {
                 method: 'OPTIONS',
                 cache: 'no-store',
                 headers: {
-                    'Origin': 'https://amor-clinic-app.vercel.app',
                     'Access-Control-Request-Method': 'GET',
                     'Access-Control-Request-Headers': 'content-type,authorization'
                 }
             });
 
-            // Browser expects 200 or 204 for preflight. 
-            // If it returns 405 (Method Not Allowed) or other error, it's a CORS failure.
             if (!corsRes.ok && corsRes.status !== 204) {
-                console.warn(`⚠️ CORS validation failed for ${serviceName} (${url}): Status ${corsRes.status}`);
-                return { 
-                    isUp: false, 
-                    statusCode: corsRes.status, 
-                    duration: Date.now() - start, 
-                    error: `CORS Preflight Failed (${corsRes.status})` 
-                };
+                console.warn(`⚠️ CORS preflight not supported by ${serviceName} (${url}): Status ${corsRes.status} — not treated as DOWN`);
             }
         } catch (corsErr) {
             console.error(`CORS check error for ${serviceName}:`, corsErr);
-            // Don't fail the whole check if fetch fails (could be network), but log it.
         }
 
         return { isUp, statusCode: res.status, duration: Date.now() - start };
