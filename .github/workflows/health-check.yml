@@ -26,3 +26,25 @@ jobs:
             echo "Health check endpoint returned non-200 status: $STATUS"
             exit 1
           fi
+
+  keepalive:
+    # GitHub disables scheduled workflows after 60 days without repository activity
+    # (this happened on 2026-06-29 and silently stopped every health check).
+    # An empty commit at most once every 30 days resets that timer.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push keepalive commit if repo idle for 30+ days
+        run: |
+          LAST=$(git log -1 --format=%ct)
+          AGE_DAYS=$(( ( $(date +%s) - LAST ) / 86400 ))
+          echo "Days since last commit: $AGE_DAYS"
+          if [ "$AGE_DAYS" -ge 30 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "chore: keepalive commit to keep scheduled health check enabled"
+            git push
+          fi

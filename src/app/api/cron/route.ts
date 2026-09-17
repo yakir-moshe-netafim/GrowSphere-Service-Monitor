@@ -93,6 +93,15 @@ async function runInChunks<T, R>(items: T[], chunkSize: number, asyncFn: (item: 
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// @vercel/kv (Upstash) auto-deserializes values: a key written as kv.set(key, 'true')
+// is read back as the boolean `true`, so a strict `=== 'true'` comparison never matched.
+// That silently broke the pending/alerted state machine — no DOWN or RECOVERY alert
+// could ever fire. Compare against every representation the client may return.
+async function kvFlag(key: string): Promise<boolean> {
+    const value = await kv.get(key);
+    return value === true || value === 'true' || value === 1 || value === '1';
+}
+
 // ─── Main cron handler ────────────────────────────────────────────────────────
 export async function GET(request: Request) {
     const startOverall = Date.now();
@@ -217,13 +226,13 @@ export async function GET(request: Request) {
                         continue;
                     }
 
-                    const alreadyAlerted = await kv.get(alertKey) === 'true';
+                    const alreadyAlerted = await kvFlag(alertKey);
                     if (alreadyAlerted) {
                         console.log(`⏭️ Already alerted: ${result.serviceName} [${result.envName}]`);
                         continue;
                     }
 
-                    const isPending = await kv.get(pendingKey) === 'true';
+                    const isPending = await kvFlag(pendingKey);
                     if (isPending) {
                         // 2nd consecutive cron run still DOWN → send alert
                         console.log(`🔴 Confirmed DOWN across 2 runs: ${result.serviceName} [${result.envName}]`);
@@ -264,13 +273,13 @@ export async function GET(request: Request) {
 
                 try {
                     if (hasKV) {
-                        const wasPending = await kv.get(pendingKey) === 'true';
+                        const wasPending = await kvFlag(pendingKey);
                         if (wasPending) {
                             console.log(`🔕 False alarm cleared: ${result.serviceName} [${result.envName}]`);
                             await kv.del(pendingKey);
                         }
 
-                        const wasDown = await kv.get(alertKey) === 'true';
+                        const wasDown = await kvFlag(alertKey);
                         if (wasDown) {
                             newlyRecoveredEnvs.push(result);
                             await kv.del(alertKey);
