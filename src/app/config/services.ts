@@ -249,17 +249,6 @@ export const services: ServiceConfig[] = [
         ],
     },
     {
-        // TEMPORARY — end-to-end verification of the Teams alerting pipeline.
-        // Points at a path that answers 404, so the cron classifies it as a real DOWN
-        // (not merely unreachable) and sends an alert on the second consecutive run.
-        // Remove once verified.
-        id: 'alert-pipeline-test',
-        name: 'Alert Pipeline Test (temporary)',
-        environments: [
-            { name: 'STAG', url: 'https://dataapi.k8s.growsphere.netafim.com/health' },
-        ],
-    },
-    {
         id: 'identity-service',
         name: 'Identity Service',
         environments: [
