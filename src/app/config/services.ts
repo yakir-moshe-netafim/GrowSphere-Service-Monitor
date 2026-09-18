@@ -250,12 +250,13 @@ export const services: ServiceConfig[] = [
     },
     {
         // TEMPORARY — end-to-end verification of the Teams alerting pipeline.
-        // Points at a hostname that does not resolve, so the cron reports it DOWN
-        // and, after the second consecutive run, sends a real alert. Remove once verified.
+        // Points at a path that answers 404, so the cron classifies it as a real DOWN
+        // (not merely unreachable) and sends an alert on the second consecutive run.
+        // Remove once verified.
         id: 'alert-pipeline-test',
         name: 'Alert Pipeline Test (temporary)',
         environments: [
-            { name: 'STAG', url: 'https://alert-pipeline-test.k8s.growsphere.netafim.com/health' },
+            { name: 'STAG', url: 'https://dataapi.k8s.growsphere.netafim.com/health/definitely-not-here' },
         ],
     },
     {

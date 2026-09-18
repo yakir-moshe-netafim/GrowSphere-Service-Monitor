@@ -111,10 +111,15 @@ export async function sendTeamsAlert({ serviceName, failingEnvs }: GroupedAlertP
 
     const timestamp = new Date().toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' });
 
+    // statusCode 0 means the endpoint never answered (timeout, reset, DNS). That is a
+    // reachability problem, often on the monitor's side of a cross-border link, and is
+    // reported as such — calling it a service outage sends people chasing a healthy service.
+    const unreachableOnly = failingEnvs.every(env => env.statusCode === 0);
+
     // Build one Adaptive Card fact-set row per failing environment
     const envFacts = failingEnvs.map(env => ({
         title: env.envName,
-        value: `Status: **${env.statusCode === 0 ? 'Timeout / No Response' : env.statusCode}**`,
+        value: `Status: **${env.statusCode === 0 ? 'No response' : env.statusCode}**`,
     }));
 
     const card = {
@@ -130,14 +135,16 @@ export async function sendTeamsAlert({ serviceName, failingEnvs }: GroupedAlertP
                     body: [
                         {
                             type: 'Container',
-                            style: 'attention',
+                            style: unreachableOnly ? 'warning' : 'attention',
                             items: [
                                 {
                                     type: 'TextBlock',
-                                    text: `🚨 Service DOWN: ${serviceName}`,
+                                    text: unreachableOnly
+                                        ? `⚠️ No response: ${serviceName}`
+                                        : `🚨 Service DOWN: ${serviceName}`,
                                     weight: 'Bolder',
                                     size: 'Large',
-                                    color: 'Attention',
+                                    color: unreachableOnly ? 'Warning' : 'Attention',
                                     wrap: true,
                                 },
                                 {
@@ -150,6 +157,13 @@ export async function sendTeamsAlert({ serviceName, failingEnvs }: GroupedAlertP
                                 },
                             ],
                         },
+                        ...(unreachableOnly ? [{
+                            type: 'TextBlock',
+                            wrap: true,
+                            text: 'The monitor could not reach these endpoints, so no health status came back. '
+                                + 'This is often a network problem between the monitor and the service — '
+                                + 'open the link below before escalating.',
+                        }] : []),
                         {
                             type: 'FactSet',
                             facts: [
@@ -170,7 +184,7 @@ export async function sendTeamsAlert({ serviceName, failingEnvs }: GroupedAlertP
 
     try {
         await postAdaptiveCard(webhookUrl, card);
-        console.log(`✅ Teams DOWN alert sent for ${serviceName}`);
+        console.log(`✅ Teams ${unreachableOnly ? 'UNREACHABLE' : 'DOWN'} alert sent for ${serviceName}`);
     } catch (error) {
         console.error('❌ Failed to send Teams DOWN alert:', error);
     }

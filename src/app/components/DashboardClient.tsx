@@ -7,16 +7,26 @@ import clsx from 'clsx';
 
 type EnvName = 'Dev1' | 'Dev2' | 'QA1' | 'STAG' | 'PROD' | 'China Prod' | 'China Stag';
 
+type CheckState = 'UP' | 'DOWN' | 'UNREACHABLE';
+
 interface ServiceResult {
     serviceId: string;
     serviceName: string;
     env: string;
     url: string;
     isUp: boolean;
+    /** UNREACHABLE means the monitor could not reach the endpoint at all — a network
+     *  problem on our side, not evidence that the service failed. It is deliberately
+     *  kept out of the red "Down" count so nobody escalates on a cross-border blip. */
+    state: CheckState;
     statusCode: number;
     duration: number;
     error?: string;
 }
+
+const UNREACHABLE_HINT =
+    'The monitor could not reach this endpoint after 3 attempts (network, DNS or TLS failure). ' +
+    'The service itself may well be healthy — open the URL to confirm before escalating.';
 
 interface Props {
     services: ServiceConfig[];
@@ -175,6 +185,7 @@ export default function DashboardClient({ services }: Props) {
                         env: task.env,
                         url: task.url,
                         isUp: data.isUp,
+                        state: data.state ?? (data.isUp ? 'UP' : data.statusCode === 0 ? 'UNREACHABLE' : 'DOWN'),
                         statusCode: data.statusCode,
                         duration: data.duration,
                         error: data.error
@@ -237,7 +248,7 @@ export default function DashboardClient({ services }: Props) {
                     if (selectedEnv !== 'ALL' && env.name !== selectedEnv) return false;
                     if (showOnlyDown) {
                         const result = results.find((r) => r.serviceId === service.id && r.env === env.name);
-                        if (result?.isUp) return false;
+                        if (result?.state === 'UP') return false;
                     }
                     return true;
                 });
@@ -248,16 +259,17 @@ export default function DashboardClient({ services }: Props) {
         return [...processed].sort((a, b) => {
             const aResults = results.filter((r) => r.serviceId === a.id && a.environments.some((e) => e.name === r.env));
             const bResults = results.filter((r) => r.serviceId === b.id && b.environments.some((e) => e.name === r.env));
-            const aUp = aResults.every((r) => r.isUp);
-            const bUp = bResults.every((r) => r.isUp);
+            const aUp = aResults.every((r) => r.state === 'UP');
+            const bUp = bResults.every((r) => r.state === 'UP');
             if (aUp === bUp) return 0;
             return aUp ? 1 : -1;
         });
     }, [services, results, selectedEnv, showOnlyDown]);
 
-    const totalUp = results.filter((r) => r.isUp).length;
-    const totalDown = results.filter((r) => !r.isUp).length;
-    const overallHealthy = totalDown === 0 && !isLoading;
+    const totalUp = results.filter((r) => r.state === 'UP').length;
+    const totalDown = results.filter((r) => r.state === 'DOWN').length;
+    const totalUnreachable = results.filter((r) => r.state === 'UNREACHABLE').length;
+    const overallHealthy = totalDown === 0 && totalUnreachable === 0 && !isLoading;
 
     const lastUpdatedFormatted = lastUpdatedAt
         ? new Date(lastUpdatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -287,18 +299,22 @@ export default function DashboardClient({ services }: Props) {
                                 ? 'bg-slate-800 border-slate-700 text-slate-400'
                                 : overallHealthy
                                 ? 'bg-green-500/10 border-green-500/30 text-green-400'
-                                : 'bg-red-500/10 border-red-500/30 text-red-400'
+                                : totalDown > 0
+                                ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                                : 'bg-amber-500/10 border-amber-500/30 text-amber-400'
                         )}>
                             {isLoading ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
                             ) : (
-                                <span className={clsx('w-2 h-2 rounded-full animate-pulse', overallHealthy ? 'bg-green-400' : 'bg-red-400')} />
+                                <span className={clsx('w-2 h-2 rounded-full animate-pulse', overallHealthy ? 'bg-green-400' : totalDown > 0 ? 'bg-red-400' : 'bg-amber-400')} />
                             )}
                             {isLoading
                                 ? 'Checking services…'
                                 : overallHealthy
                                 ? 'All Systems Operational'
-                                : `${totalDown} Service${totalDown > 1 ? 's' : ''} Down`}
+                                : totalDown > 0
+                                ? `${totalDown} Service${totalDown > 1 ? 's' : ''} Down`
+                                : `${totalUnreachable} Endpoint${totalUnreachable > 1 ? 's' : ''} Unreachable`}
                         </div>
 
                         {/* Refresh counter */}
@@ -332,7 +348,7 @@ export default function DashboardClient({ services }: Props) {
 
             <div className="max-w-7xl mx-auto px-6 py-8">
                 {/* Summary Stats */}
-                <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 text-center">
                         <div className="text-3xl font-bold text-white">{isLoading ? '—' : results.length}</div>
                         <div className="text-sm text-slate-400 mt-1">Total Endpoints</div>
@@ -344,6 +360,10 @@ export default function DashboardClient({ services }: Props) {
                     <div className="bg-slate-900 border border-red-500/20 rounded-xl p-5 text-center">
                         <div className="text-3xl font-bold text-red-400">{isLoading ? '—' : totalDown}</div>
                         <div className="text-sm text-slate-400 mt-1">Down</div>
+                    </div>
+                    <div className="bg-slate-900 border border-amber-500/20 rounded-xl p-5 text-center" title={UNREACHABLE_HINT}>
+                        <div className="text-3xl font-bold text-amber-400">{isLoading ? '—' : totalUnreachable}</div>
+                        <div className="text-sm text-slate-400 mt-1">Unreachable</div>
                     </div>
                 </div>
 
@@ -435,33 +455,42 @@ export default function DashboardClient({ services }: Props) {
                                     const visibleResults = serviceResults.filter((r) =>
                                         service.environments.some((e) => e.name === r.env)
                                     );
-                                    const serviceUp = visibleResults.every((r) => r.isUp);
+                                    const serviceUp = visibleResults.every((r) => r.state === 'UP');
+                                    const serviceDown = visibleResults.some((r) => r.state === 'DOWN');
 
                                     return (
                                         <div
                                             key={service.id}
                                             className={clsx(
                                                 'bg-slate-900 rounded-xl border p-5 transition-all duration-200 hover:shadow-lg hover:shadow-slate-900/50',
-                                                serviceUp ? 'border-slate-800' : 'border-red-500/30'
+                                                serviceUp ? 'border-slate-800' : serviceDown ? 'border-red-500/30' : 'border-amber-500/30'
                                             )}
                                         >
                                             <div className="flex items-start justify-between mb-4">
                                                 <div className="flex items-center gap-2.5">
-                                                    <span className={clsx('w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse', serviceUp ? 'bg-green-400' : 'bg-red-400')} />
+                                                    <span className={clsx('w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse', serviceUp ? 'bg-green-400' : serviceDown ? 'bg-red-400' : 'bg-amber-400')} />
                                                     <h2 className="font-semibold text-slate-100 leading-tight">{service.name}</h2>
                                                 </div>
-                                                <span className={clsx(
-                                                    'text-xs px-2 py-0.5 rounded font-medium flex-shrink-0',
-                                                    serviceUp ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
-                                                )}>
-                                                    {serviceUp ? 'OK' : 'ISSUE'}
+                                                <span
+                                                    className={clsx(
+                                                        'text-xs px-2 py-0.5 rounded font-medium flex-shrink-0',
+                                                        serviceUp
+                                                            ? 'bg-green-500/10 text-green-400'
+                                                            : serviceDown
+                                                            ? 'bg-red-500/10 text-red-400'
+                                                            : 'bg-amber-500/10 text-amber-400'
+                                                    )}
+                                                    title={!serviceUp && !serviceDown ? UNREACHABLE_HINT : undefined}
+                                                >
+                                                    {serviceUp ? 'OK' : serviceDown ? 'ISSUE' : 'NO REPLY'}
                                                 </span>
                                             </div>
 
                                             <div className="space-y-2">
                                                 {service.environments.map((env) => {
                                                     const result = results.find((r) => r.serviceId === service.id && r.env === env.name);
-                                                    const isUp = result?.isUp ?? false;
+                                                    const isUp = result?.state === 'UP';
+                                                    const isUnreachable = result?.state === 'UNREACHABLE';
                                                     const envStyle = ENV_STYLES[env.name] ?? ENV_STYLES.Dev1;
 
                                                     return (
@@ -489,13 +518,21 @@ export default function DashboardClient({ services }: Props) {
                                                                         <span className="flex items-center gap-1 text-green-400 text-xs font-bold">
                                                                             <CheckCircle className="w-3.5 h-3.5" /> UP
                                                                         </span>
+                                                                    ) : isUnreachable ? (
+                                                                        <span
+                                                                            className="flex items-center gap-1 text-amber-400 text-xs font-bold cursor-help"
+                                                                            title={`${result?.error ?? 'NO REPLY'} — ${UNREACHABLE_HINT}`}
+                                                                        >
+                                                                            <AlertTriangle className="w-3.5 h-3.5" />
+                                                                            NO REPLY
+                                                                        </span>
                                                                     ) : (
                                                                         <span
                                                                             className="flex items-center gap-1 text-red-400 text-xs font-bold cursor-help"
-                                                                            title={result?.error || (result?.statusCode === 0 ? 'Connection Timeout' : `Error ${result?.statusCode}`)}
+                                                                            title={result?.error || `Error ${result?.statusCode}`}
                                                                         >
                                                                             <XCircle className="w-3.5 h-3.5" />
-                                                                            {result?.statusCode === 0 ? (result?.error || 'TIMEOUT') : `${result?.statusCode ?? 'ERR'}`}
+                                                                            {`${result?.statusCode ?? 'ERR'}`}
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -505,7 +542,12 @@ export default function DashboardClient({ services }: Props) {
                                                                     href={env.url}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
-                                                                    className="text-xs text-red-400/70 hover:text-red-300 break-all pl-3 transition-colors"
+                                                                    className={clsx(
+                                                                        'text-xs break-all pl-3 transition-colors',
+                                                                        isUnreachable
+                                                                            ? 'text-amber-400/70 hover:text-amber-300'
+                                                                            : 'text-red-400/70 hover:text-red-300'
+                                                                    )}
                                                                 >
                                                                     🔗 {env.url}
                                                                 </a>
