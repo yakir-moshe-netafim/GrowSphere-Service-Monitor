@@ -84,8 +84,19 @@ async function postAdaptiveCard(webhookUrl: string, payload: object): Promise<vo
         throw new Error(`Teams webhook responded with HTTP ${res.status}: ${responseText}`);
     }
 
+    // A retired Office 365 connector still answers 200, but with an empty body and a
+    // proxy error header — the post is silently dropped and never reaches the channel.
+    // A live connector replies "1"; a Power Automate Workflow replies 202 with a body.
+    const proxyError = res.headers.get('x-proxyerrormessage');
+    if (!responseText && proxyError) {
+        throw new Error(
+            `Teams webhook accepted the post but dropped it (HTTP ${res.status}, empty body, ` +
+            `x-proxyerrormessage: "${proxyError}"). The Office 365 connector is most likely ` +
+            `retired — recreate the webhook via Teams > Workflows and update TEAMS_WEBHOOK_URL.`
+        );
+    }
+
     // Old connectors return "1" on success, new Workflow connectors return HTTP 202.
-    // Both are acceptable — log the body for debugging but don't throw.
     console.log(`📨 Teams webhook response: HTTP ${res.status} — body: "${responseText}"`);
 }
 
