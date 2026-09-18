@@ -256,7 +256,7 @@ export const services: ServiceConfig[] = [
         id: 'alert-pipeline-test',
         name: 'Alert Pipeline Test (temporary)',
         environments: [
-            { name: 'STAG', url: 'https://dataapi.k8s.growsphere.netafim.com/health/definitely-not-here' },
+            { name: 'STAG', url: 'https://dataapi.k8s.growsphere.netafim.com/health' },
         ],
     },
     {
